@@ -1,6 +1,5 @@
 (println "\n\n-----------------")
 (println "loading library com.murphydye.utils.core")
-(println "-----------------\n\n")
 
 (ns murphydye.utils.core
   (:require
@@ -54,6 +53,54 @@
  (assert= nil (->int nil) (->int "    "))
  (assert= 34 (->int "   34") (->int "   000000034")))
 
+(defmacro defn-memo [name & body]
+  `(def ~name (memoize (fn ~body))))
+
+(defn ->str [a-name]
+  (if (string? a-name)
+    a-name
+    (if (number? a-name)
+      a-name
+      (str/replace
+       (str/upper-case
+        (if (keyword? a-name)
+          (name a-name)
+          (str a-name)))
+       "-" "_"))))
+
+(defn ->keyword [a-string]
+  (if (keyword? a-string)
+    a-string
+    (keyword
+     (str/lower-case (str/replace (str a-string) "_" "-")))))
+
+(defn ->int [v]
+  (if (nil? v)
+    nil
+    (if (string? v)
+      (let [v (str/trim v)]
+        (if (empty? v)
+          nil
+          (-> v Double/parseDouble int)))
+      (int v))))
+
+(defn ->float [v]
+  (if (nil? v)
+    nil
+    (if (string? v)
+      (let [v (str/trim v)]
+        (if (empty? v)
+          nil
+          (Double/parseDouble v)))
+      (double v))))
+
+(defn as-integer [string]
+  (->int string))
+;; (if (= (type string) String)
+;;   (read-string (as-short-document-num string))
+;;   string))
+
+
 (def map! (comp doall map))
 (def maprun (comp dorun map))
 
@@ -71,22 +118,69 @@
  (assert= 9 (detect #(> % 5) [2 9 4 7]) ((detect #(> % 5)) [2 9 4 7]))
  (assert= 6 (detect #(> % 5) (range)) ((detect #(> % 5)) (range))))
 
-(def ppout *out*)
-(defn reset-pp []
-  (def ppout *out*))
-;; (reset-pp)
-
-(defn ppn [& args]
-  (binding [*out* ppout]
-    (println "\n-------------------")
+(defn ppn
+  "pprint, returning nil"
+  [& args]
+  (binding [clojure.pprint/*print-miser-width* 120
+            clojure.pprint/*print-right-margin* 120]
     (doseq [arg args] (pprint arg))))
 
 (defn pp [& args]
   (apply ppn args)
   (last args))
+;; (ppn 3 {:a 3 :q "rew"})
+
+(def rppout *out*)
+(defn reset-rpp []
+  (def rppout *out*))
+;; (reset-rpp)
+
+(defn rppn
+  "repl pprint, returning nil"
+  [& args]
+  (binding [*out* rppout]
+    (println "\n-------------------")
+    (apply ppn args)))
+    ;; (doseq [arg args] (pprint arg))))
+
+(defn rpp
+  "repl pprint, returning last arg"
+  [& args]
+  (apply rppn args)
+  (last args))
 
 (defn pp->str [obj]
   (with-out-str (pprint obj)))
+
+(defn spit-fn
+  "spits each element of seq with ele-fn"
+  [ele-fn filename coll & opts]
+  (with-open [out (apply clojure.java.io/writer filename :encoding "UTF-8" opts)]
+    (binding [*out* out]
+      (maprun ele-fn coll))))
+(defn spitln
+  "spits seq with linefeeds between elements"
+  [filename coll & opts]
+  (apply spit-fn pp filename coll opts)
+  )
+;; (spitln "junky" [1 3 5 7 11])
+;; (spitln "junky" {:a [1 2 3 4] :b "hey"})
+
+(defn sans-accumulator
+  "reducer helper for functions that don't care about the accumulator"
+  ([f] (fn reducefn
+         ([])   ;; called at start when no initial value provided
+         ([_])  ;; called when finished with collection
+         ([_ val] (f val))))
+  ([f finish-fn] (fn reducefn
+                   ([])
+                   ([_] (finish-fn))
+                   ([_ val] (f val))))
+  ([f finish-fn start-fn] (fn reducefn
+                            ([] (start-fn))
+                            ([_] (finish-fn))
+                            ([_ val] (f val))))
+  )
 
 (defn uuid [] (java.util.UUID/randomUUID))
 ;; (uuid)
@@ -190,21 +284,29 @@
   "convert mixed case to lower case with hyphens. Considers 'ID' as a token."
   [key]
   (let [skey (if (keyword? key) (name key) (str key))
-        s (str/replace skey #"_" "-")
+        s (str/replace skey #"[_\s-()]+" "-")
         s (str/replace s #"[^A-Z-][A-Z]" #(str (first %) "-" (second %)))
+        s (str/replace s #"^-+" "")
+        s (str/replace s #"-+$" "")
         s (str/lower-case s)
         ;; s (str/join (map #(if (and (<= 65 (int %)) (<= (int %) 90)) (str \- (str/lower-case %)) %) s))
         k (keyword (if (= \- (first s)) (subs s 1) s))]
       k))
+;; (clojurize-keyword! "ParentID of middle-child2 (API)")
+;; (clojurize-keyword! "ParentID of middle-child2")
+;; (clojurize-keyword! "ParentID of middle _--_ _   child2")
+;; (clojurize-keyword! "Arbor Size - Fractional")
+;; (clojurize-keyword "Arbor Size - Fractional")
+;; (humanize! "Arbor Size - Fractional")
+;; (humanize "Arbor Size - Fractional")
 
 (defn clojurize-keyword
-  "convert mixed case to lower case with hyphens. Considers 'ID' as a token.
-  Memoized, so can override this function's output with your own."
+  "memoized. can override this function's output with your own via set-clojurized-keyword."
   [key]
   (let [skey (if (keyword? key) (name key) (str key))]
     (if-let [k (@clojurized-keywords skey)]
       k
-      (clojurize-keyword! skey))))
+      (set-clojurized-keyword key (clojurize-keyword! skey)))))
 
 (examples
  (clear-clojurized-keywords)
@@ -230,7 +332,43 @@
  (clojurize-map-keywords {:ParentID "394" :SubMap {:TestID ["a" 3 :ParentTrap]}})
  )
 
-(defn save-to-x
+(defn humanize! [s]
+  (str/join " "
+            (map str/capitalize
+                 (-> s clojurize-keyword name (str/split #"-") ))))
+;; (assert= "Parent Id" (humanize! "ParentID"))
+;; note: we would prefer "Parent ID"
+
+(defonce humanized-words (atom {}))
+
+(defn set-humanized [from-word to-word]
+  (swap! humanized-words assoc from-word to-word)
+  to-word)
+
+(defn clear-humanized-words []
+  (reset! humanized-words {}))
+;; (clear-humanized-words)
+
+(defn humanize
+  "memoized. can override this function's output with your own via set-humanized."
+  [word]
+  (let [word (str/trim (->str word))
+        low-word (str/lower-case word)]
+    (if-let [w (@humanized-words low-word)]
+      w
+      (set-humanized low-word (humanize! word)))))
+;; (clojurize-keyword! "ParentID of middle-child2")
+;; (humanize! "ParentID of middle-child3")
+;; (humanize "ParentID of middle-child3")
+;; (humanize! "Arbor Size - Fractional")
+;; (clear-humanized-words)
+;; (humanize "Arbor Size - Fractional")
+
+(defn humanized->id [humanized-string]
+  (str/join "_" (str/split humanized-string #"\s")))
+;; (assert= "Parent_Id_Of_Middle_Child3" (humanized->id (humanize "ParentID of middle-child3")))
+
+(defn save-to-xyz1
   "may be used in a threading macro"
   [obj]
   (def x obj)
@@ -288,50 +426,6 @@
   "remove leading zeros"
   (if string (str/replace string #"^0*" "")))
 ;; (as-short-document-num (as-document-num "00001"))
-
-(defn ->str [a-name]
-  (if (string? a-name)
-    a-name
-    (if (number? a-name)
-      a-name
-      (str/replace
-       (str/upper-case
-        (if (keyword? a-name)
-          (name a-name)
-          (str a-name)))
-       "-" "_"))))
-
-(defn ->keyword [a-string]
-  (if (keyword? a-string)
-    a-string
-    (keyword
-     (str/lower-case (str/replace (str a-string) "_" "-")))))
-
-(defn ->int [v]
-  (if (nil? v)
-    nil
-    (if (string? v)
-      (let [v (str/trim v)]
-        (if (empty? v)
-          nil
-          (-> v Double/parseDouble int)))
-      (int v))))
-
-(defn ->float [v]
-  (if (nil? v)
-    nil
-    (if (string? v)
-      (let [v (str/trim v)]
-        (if (empty? v)
-          nil
-          (Double/parseDouble v)))
-      (double v))))
-
-(defn as-integer [string]
-  (->int string))
-  ;; (if (= (type string) String)
-  ;;   (read-string (as-short-document-num string))
-  ;;   string))
 
 (defn bh_login [email pw]
   (let [cred
@@ -459,12 +553,77 @@
   (clean-all (now))
   )
 
+(defn stepxml-top-tag []
+  [:STEP-ProductInformation
+   {:ExportTime (timenow)
+    ;:ExportContext "Context1"
+    :ContextID "Context1"
+    :WorkspaceID "Main"
+    :UseContextLocale "false"
+    }
+   [:Products]])
+
+
+;(map * [1 2 3] [4 5 6])
+;(for [i [1 2 3] j [4 5 5]] (* i j))
+;(mapcat (fn[j] (map #(* % j) [4 5 6])) [1 2 3])
+;(mapcat (fn[j] (map (fn[i] (* i j)) [4 5 6])) [1 2 3])
+;
+;(defn zip
+;  [& colls]
+;  (apply map vector colls))
+;
+;(for [[i j] (zip [1 2 3] [4 5 6])] (* i j))
+;
+;(zip [1 2 3] [4 5 6] [7 8 9 9])
+;(interleave [1 2 3] [4 5 6])
+;(time (dorun (for [x (range 1000) y (range 10000) :while (> x y)] [x y])))
+;(time (doall (for [x (range 10) y (range 10) :while (> x y)] [x y])))
+;(time (doall (for [x (range 10) y (range 10) :when (> x y)] [x y])))
+;(time (dorun (for [x (range 1000) y (range 10000) :when (> x y)] [x y])))
+;(for [[x y] '([:a 0] [:b 2] [:c 0]) :when (= y 0)] x)
+
+(defn is-search-page? [txt]
+  (re-find #"Refine By" txt))
+
+(defn content-for-name [coll name]
+  (let [section (first (filter #(= name (% "name")) coll))
+        ]
+    (case (section "type")
+      "TABLE" (->> (section "table") second)
+      section)
+    )
+  )
+(examples
+ (content-for-name saporder "ET_ORDERS_SUMMARY")
+ (content-for-name saporder "ET_ORDERS_DETAIL"))
 
 (defn hselect [parsed v]
   (html/select parsed v))
 
 (defn hdetect [parsed v]
   (first (hselect parsed v)))
+
+(defn platt-page-category [page]
+  (cond
+    (not-empty (hselect page [:span.ProductPriceOrderBox])) :product
+    (not-empty (hselect page [:div.no-products-section])) :not-found
+    (not-empty (hselect page [:div.refineByHeader])) :search
+    :else :unknown
+    ))
+;(platt-page-category q)
+
+(defn has-platt-download? [search-str]
+  (or
+    (.exists (io/as-file (str "/Users/bmd/data/crawler/platt/product/" search-str ".html")))
+    (.exists (io/as-file (str "/Users/bmd/data/crawler/platt/search/" search-str ".html")))
+    (.exists (io/as-file (str "/Users/bmd/data/crawler/platt/not-found/" search-str ".html")))
+    (.exists (io/as-file (str "/Users/bmd/data/crawler/platt/unknown/" search-str ".html")))
+    ))
+
+(defn platt-url [search-str]
+  (str "https://www.platt.com/search.aspx?q=" search-str "&catNavPage=1&navPage=1_16_0")
+  )
 
 (defn html->enlive [html]
   (html/html-resource (java.io.StringReader. html)))
@@ -493,6 +652,77 @@
       (replace "&quot;" "\"")
       (replace "=>" ":")
       ))
+#_(defn unescape-fat-arrow-html
+  "Change special characters into HTML character entities."
+  [text]
+  (.. #^String (str text)
+      (replace "&amp;" "&")
+      (replace "&lt;" "<")
+      (replace "&gt;" ">")
+      (replace "&quot;" "\"")
+      (replace "=>" ":")
+      ))
+
+
+(defn save-platt-file [search-str html]
+  (let [dir "/Users/bmd/data/crawler/platt/"
+        content (html->enlive html)
+        category (platt-page-category content)
+        filename (str search-str ".html")
+        full-filename (str dir (name category) "/" filename)
+        ]
+    (println full-filename)
+    (spit full-filename html)
+    ))
+
+(defn force-download-platt [search-str]
+  ;(let [url (str "https://www.platt.com/search.aspx?q=" search-str "&catNavPage=1&navPage=1_16_0")
+  (let [url (platt-url search-str)
+        html (slurp (java.net.URL. url))]
+    ;(println url)
+    (save-platt-file search-str html)
+    html))
+
+(defn download-platt [search-str]
+  (if (not (has-platt-download? search-str))
+    (force-download-platt search-str)))
+
+(defn slow-download-platt [search-str]
+  (if (not (has-platt-download? search-str))
+    (do
+      (force-download-platt search-str)
+      (Thread/sleep 3000))))
+
+;(has-platt-download? "045242309825")
+;(.exists (io/as-file "/Users/bmd"))
+;(spit "/Users/bmd/data/crawler/platt/045242309825" m)
+
+;(def matnr045242309825 (download-platt "45242309825"))
+
+;matnr045242309825
+;(def m matnr045242309825)
+
+;(def m (force-download-platt "781810464731"))
+;(def l (force-download-platt "045242309719"))
+;(platt-page-category l)
+;l
+;(def n (html/html-resource (java.net.URL. (platt-url "781810464731"))))
+;(def l (html/html-resource (java.net.URL. (platt-url "045242309719"))))
+;(def q (html/html-resource (java.net.URL. (platt-url "cutter"))))
+;(save-platt-file "045242309719" (doseq l))
+;(type l)
+;045242309719
+;(spit "/Users/bmd/data/crawler/platt/78181046473" n)
+;n
+;m
+;(html/select (html/html-resource m) [:script])
+;(html/select l [:span.ProductPriceOrderBox])
+;(html/select n [:span])
+;
+;(-> (html/select l [:span.ProductPriceOrderBox]) first :content first)
+;span.ProductPrice
+; span.ProductPriceOrderBox
+; span.ProductPricePerType
 
 (defn req-sans-unprintable [req]
   #_["compojure.api.middleware/options",
@@ -588,8 +818,22 @@
 (defn object-id [o]
   (System/identityHashCode o))
 
+(defn select-keys3 [m keys]
+  (let [keys (set keys)]
+    (into {} (filter (fn [[k v]] (if (contains? keys k) [k v])) m))))
+
+;; (select-keys3 {:a 3 "b" 4 "c" 7} [:a "c"])
+
+(defn get-unique [maps key]
+  (map #(% key) maps))
+
+(examples
+ (get-unique [{:a 4 :b 5 "d" 12} {:a 6 :c 7}] :a)
+ (get-unique [{:a 4 :b 5 "d" 12} {:a 6 :c 7}] "d"))
+
 (examples
  (reset-pp)
  )
 
 (println "done loading com.murphydye.utils.core")
+(println "-----------------\n\n")
