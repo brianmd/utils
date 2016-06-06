@@ -4,11 +4,10 @@
 (ns murphydye.utils.core
   (:require
     ;; [clj-http.client :as client]
-    ;; [cheshire.core :refer :all]
     ;; [config.core :refer [env]]
     [clj-http.client :as client]
     [clojure.walk :refer :all]
-    [clojure.pprint :refer [pprint]]
+    [clojure.pprint]
     [clojure.string :as str]
     [clojure.java.io :as io]
 
@@ -22,13 +21,27 @@
     [korma.core :as k]
     [korma.db :as kdb]
 
+    [clj-time.core]
+    [clj-time.format]
+
     [clojure.java.jdbc :as j]
 
-    [treadstone.config :refer [env]]
+    ;; [treadstone.config :refer [env]]
     ;; [me.raynes.conch :refer [programs with-programs let-programs] :as sh]
-    [com.rpl.specter :as s]
+    [com.rpl.specter :as s :include-macros true]
     [net.cgrand.enlive-html :as html]
+
+    [potemkin :as pot]
+    [clojure.test :as test]
     ))
+
+(pot/import-vars
+ [clojure.test
+  is are]
+ )
+
+;; (def is test/is)
+;; (def are test/are)
 
 ;; (with-programs [ls] (ls {:seq true}))
 ;; (with-programs [ssh] (ssh "neo" "ls -l" {:seq true}))
@@ -55,6 +68,16 @@
 
 (defmacro defn-memo [name & body]
   `(def ~name (memoize (fn ~body))))
+
+(defn atom? [x]
+  (instance? clojure.lang.Atom x))
+  ;; (= clojure.lang.Atom (type x)))
+(examples
+  (assert (= false (atom? 'x)))
+  (assert (= true (atom? (atom 'x))))
+  )
+(defn atomize [x]
+  (if (atom? x) x (atom x)))
 
 (defn ->str [a-name]
   (if (string? a-name)
@@ -123,9 +146,9 @@
   [& args]
   (binding [clojure.pprint/*print-miser-width* 120
             clojure.pprint/*print-right-margin* 120]
-    (doseq [arg args] (pprint arg))))
+    (doseq [arg args] (clojure.pprint/pprint arg))))
 
-(defn pp [& args]
+(defn ppa [& args]
   (apply ppn args)
   (last args))
 ;; (ppn 3 {:a 3 :q "rew"})
@@ -150,7 +173,7 @@
   (last args))
 
 (defn pp->str [obj]
-  (with-out-str (pprint obj)))
+  (with-out-str (clojure.pprint/pprint obj)))
 
 (defn spit-fn
   "spits each element of seq with ele-fn"
@@ -161,7 +184,7 @@
 (defn spitln
   "spits seq with linefeeds between elements"
   [filename coll & opts]
-  (apply spit-fn pp filename coll opts)
+  (apply spit-fn ppa filename coll opts)
   )
 ;; (spitln "junky" [1 3 5 7 11])
 ;; (spitln "junky" {:a [1 2 3 4] :b "hey"})
@@ -186,61 +209,22 @@
 ;; (uuid)
 
 
-(def dbs (atom {}))
-(def ^:dynamic *db* kdb/*current-db*)
-
-
-(defmacro dselect [& args]
-  `(k/select ~@args))
-
-(defmacro ddetect [& args]
-  `(first (dselect ~@args)))
-
-(defn new-mysql-connection [m]
-  (korma.db/mysql m))
-
-(defn find-db [db-name]
-  (if-let [db (db-name @dbs)]
-    db
-    (when-let [db (new-mysql-connection (-> env :db db-name))]
-      (swap! dbs assoc db-name db)
-      db)))
-
 (defn jquery* [conn sql-vector]
   (j/query conn sql-vector))
 
 (defn jquery [conn sql-string]
   (jquery* conn [sql-string]))
 
-(defn exec-sql
-  ([sql]
-   (k/exec-raw sql :results))
-  ([conn sql]
-   (if (= :default conn)
-     (exec-sql sql)
-     (let [conn (if (keyword? conn) (find-db conn) conn)]
-       (k/exec-raw conn sql :results)))))
-;; (exec-sql "select count(*) from customers")
-;; (exec-sql :default "select count(*) from customers")
-;; (exec-sql :bh-neo "select count(*) from customers")
-;; (exec-sql :bh-dev "select count(*) from customers")
-;; (exec-sql :mdm-local "select count(*) from idw_manufacturer")
 
-(def protected-write-dbs (atom #{:bh-prod}))
-
-(defn write-sql [conn sql]
-  "use for insert/update queries"
-  (if (contains? protected-write-dbs conn)
-    (throw (Exception. "attempting to write to a protected database"))
-    (exec-sql conn sql)))
-
-(def step-input-path (-> env :paths :local :step-input-path))
-(def step-output-path (-> env :paths :local :step-output-path))
+;; (def step-input-path (-> env :paths :local :step-input-path))
+;; (def step-output-path (-> env :paths :local :step-output-path))
 
 
-(defn default-env-setting [key]
-  (let [default (-> env :defaults key)]
-    (-> env key default)))
+;; (defn default-env-setting [key]
+;;   (let [default (-> env :defaults key)]
+;;     (-> env key default)))
+
+
 ;; (default-env-setting :redis)
 ;; (default-env-setting :db)
 ;; ((default-env-setting :db) :local)
@@ -322,10 +306,10 @@
         (map! (fn [[k v]] [(clojurize-keyword k) v]) m)))
 ;; (clojurize-map {"ab_cd" 4 "AbcDef" 9})
 
-(defn clojurize-map-keywords [m]
-  (s/transform (s/walker keyword?)
-               clojurize-keyword
-               m))
+;; (defn clojurize-map-keywords [m]
+;;   (s/transform (s/walker keyword?)
+;;                clojurize-keyword
+;;                m))
 (examples
  (clojurize-keyword :ParentID)
  @clojurized-keywords
@@ -376,7 +360,7 @@
 
 (defn logit [& args]
   (binding [*out* *err*]
-    (map pprint args))
+    (map clojure.pprint/pprint args))
   (last args))
 
 (defn logit-plain [& args]
@@ -462,7 +446,7 @@
   (when (<= (count level-function-names) levels-to-print)
     (println "\n------------------------------")
     (println (str "call stack: " level-function-names))
-    (pprint result)
+    (clojure.pprint/pprint result)
     (println "....\n")
     )
   result)
@@ -779,7 +763,7 @@
    (log-now req)   ;; always save separately
    (spit (str "log/" filename ".log")
          (with-out-str
-           (pp
+           (ppa
             [(localtime)
              (if (map? req) (req->printable req) req)
              ]))
