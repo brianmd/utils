@@ -26,6 +26,8 @@
 
     [clojure.java.jdbc :as j]
 
+    [clojure.data.codec.base64 :as b64]
+
     ;; [treadstone.config :refer [env]]
     ;; [me.raynes.conch :refer [programs with-programs let-programs] :as sh]
     [com.rpl.specter :as s :include-macros true]
@@ -142,13 +144,15 @@
  (assert= 6 (detect #(> % 5) (range)) ((detect #(> % 5)) (range))))
 
 (defn ppn
-  "pprint, returning nil"
+  "pprint each arg, return nil"
   [& args]
   (binding [clojure.pprint/*print-miser-width* 120
             clojure.pprint/*print-right-margin* 120]
     (doseq [arg args] (clojure.pprint/pprint arg))))
 
-(defn ppa [& args]
+(defn ppa
+  "pprint each arg, return last arg"
+  [& args]
   (apply ppn args)
   (last args))
 ;; (ppn 3 {:a 3 :q "rew"})
@@ -798,6 +802,9 @@
 ;; (upc-check-digit "87663000027")
 ;; (upc-check-digit "80432546052")
 ;; (assert (= "804325460521" (add-checksum "80432546052")))
+
+(defn base64-encode [s]
+  (String. (b64/encode (.getBytes s)) "UTF-8"))
 
 (defn object-id [o]
   (System/identityHashCode o))

@@ -29,5 +29,6 @@
                  [incanter "1.5.7"]
                  [dk.ative/docjure "1.10.0"]    ; access to excel
                  [potemkin "0.4.3"]
+                 [org.clojure/data.codec "0.0.1"]
                  ]
   :source-paths ["src/clj" "src/cljs"])
