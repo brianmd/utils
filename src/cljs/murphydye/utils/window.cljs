@@ -1,10 +1,10 @@
 ;; http://fstoke.me/jquery/window/
 
-(ns murphydye.window
+(ns murphydye.utils.window
   (:require [reagent.core :as r]
             [reagent.session :as session]
-            [re-com.core           :refer [h-box v-box box selection-list label title checkbox p line hyperlink-href]]
-            [re-com.selection-list :refer [selection-list-args-desc]]
+            ;; [re-com.core           :refer [h-box v-box box selection-list label title checkbox p line hyperlink-href]]
+            ;; [re-com.selection-list :refer [selection-list-args-desc]]
 
             [secretary.core :as secretary :include-macros true]
             [goog.events :as events]
