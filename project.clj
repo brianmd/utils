@@ -1,4 +1,4 @@
-(defproject com.murphydye/utils "0.1.1"
+(defproject com.murphydye/utils "0.1.1-SNAPSHOT"
   :description "Random, unorganized utility functions"
   :url "https://github.com/brianmd/utils"
   :license {:name "Eclipse Public License"
