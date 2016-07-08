@@ -1,4 +1,4 @@
-(defproject com.murphydye/utils "0.1.0"
+(defproject com.murphydye/utils "0.1.1"
   :description "Random, unorganized utility functions"
   :url "https://github.com/brianmd/utils.git"
   :license {:name "Eclipse Public License"
@@ -29,7 +29,6 @@
                  [incanter "1.5.7"]
                  [dk.ative/docjure "1.10.0"]    ; access to excel
                  [potemkin "0.4.3"]
-                 [org.clojure/data.codec "0.0.1"]
 
                  ;; cljs libraries
                  [siren "0.2.0"]
