@@ -1,3 +1,5 @@
+(println "loading library com.murphydye.utils.db")
+
 (ns murphydye.utils.db)
 
 (def dbs (atom {}))
@@ -64,3 +66,4 @@
 ;; (find-by-colname :customers :id 28)
 ;; (find-by-id :customers 28)
 
+(println "done loading library com.murphydye.utils.db")
