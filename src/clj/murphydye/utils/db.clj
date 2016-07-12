@@ -1,6 +1,9 @@
 (println "loading library com.murphydye.utils.db")
 
-(ns murphydye.utils.db)
+(ns murphydye.utils.db
+  (require [korma.core :as k]
+           [korma.db :as kdb]
+           ))
 
 (def dbs (atom {}))
 (def ^:dynamic *db* kdb/*current-db*)
