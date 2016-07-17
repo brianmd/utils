@@ -141,7 +141,7 @@
    {:id "7" :label "7th RULE: Fights will go on as long as they have to." :short "7th RULE"}
    {:id "8" :label "8th RULE: If this is your first night at FIGHT CLUB, you HAVE to fight." :short "8th RULE"}])
 
-(defn query-win []
+#_(defn query-win []
   (let [
         ;; query-keys (r/atom ["fetching query names"])
         query-keys (r/atom fight-club)
