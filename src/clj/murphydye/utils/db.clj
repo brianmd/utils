@@ -3,6 +3,8 @@
 (ns murphydye.utils.db
   (require [korma.core :as k]
            [korma.db :as kdb]
+
+           [clojure.java.jdbc :as j]
            ))
 
 (def dbs (atom {}))
@@ -68,5 +70,11 @@
   )
 ;; (find-by-colname :customers :id 28)
 ;; (find-by-id :customers 28)
+
+(defn jquery* [conn sql-vector]
+  (j/query conn sql-vector))
+
+(defn jquery [conn sql-string]
+  (jquery* conn [sql-string]))
 
 (println "done loading library com.murphydye.utils.db")

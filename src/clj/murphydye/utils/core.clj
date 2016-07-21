@@ -5,6 +5,7 @@
   (:require
     ;; [clj-http.client :as client]
     ;; [config.core :refer [env]]
+   ;; [treadstone.config :refer [env]]
     [clj-http.client :as client]
     [clojure.walk :refer :all]
     [clojure.pprint]
@@ -18,17 +19,11 @@
     ;[cats.builtin]
     ;[cats.monad.maybe :as maybe]
 
-    [korma.core :as k]
-    [korma.db :as kdb]
-
     [clj-time.core]
     [clj-time.format]
 
-    [clojure.java.jdbc :as j]
-
     [clojure.data.codec.base64 :as b64]
 
-    ;; [treadstone.config :refer [env]]
     ;; [me.raynes.conch :refer [programs with-programs let-programs] :as sh]
     [com.rpl.specter :as s :include-macros true]
     [net.cgrand.enlive-html :as html]
@@ -213,32 +208,9 @@
 ;; (uuid)
 
 
-(defn jquery* [conn sql-vector]
-  (j/query conn sql-vector))
-
-(defn jquery [conn sql-string]
-  (jquery* conn [sql-string]))
-
-
-;; (def step-input-path (-> env :paths :local :step-input-path))
-;; (def step-output-path (-> env :paths :local :step-output-path))
-
-
-;; (defn default-env-setting [key]
-;;   (let [default (-> env :defaults key)]
-;;     (-> env key default)))
-
-
-;; (default-env-setting :redis)
-;; (default-env-setting :db)
-;; ((default-env-setting :db) :local)
 
 (println "(an error here indicates you need a profile.clj file with redis settings!)")
 
-;; (def redis-conn {:pool {} :spec (default-env-setting :redis)})
-;; (defmacro wcar* [& body] `(car/wcar redis-conn ~@body))
-
-;; (wcar* (car/ping))
 
 
 ;; (add-encoder clojure.lang.Delay
@@ -356,11 +328,7 @@
   (str/join "_" (str/split humanized-string #"\s")))
 ;; (assert= "Parent_Id_Of_Middle_Child3" (humanized->id (humanize "ParentID of middle-child3")))
 
-(defn save-to-xyz1
-  "may be used in a threading macro"
-  [obj]
-  (def x obj)
-  x)
+
 
 (defn logit [& args]
   (binding [*out* *err*]
@@ -370,17 +338,47 @@
 (defn logit-plain [& args]
   (apply println args)
   (last args))
+(defn log-now [obj]
+  "stores request in its own file as edn"
+  (let [filename (uuid)]
+    (spit (str "log/separate/" filename)
+          (pr-str obj)))
+  obj)
+
+(defn do-log-request
+  ([req] (do-log-request req "requests"))
+  ([req filename]
+   (log-now req)   ;; always save separately
+   (spit (str "log/" filename ".log")
+         (with-out-str
+           (ppa
+            [(localtime)
+             (if (map? req) (req->printable req) req)
+             ]))
+         :append true)
+   req))
+;; (do-log-request 3 "requests")
+
+
 
 (defn first-element-equals? [key coll]
   (and (sequential? coll) (= key (first coll))))
 
+
+
 (defn floored [x]
   (java.lang.Math/floor (double x)))
+
+
 
 (defn select-ranges [rows & ranges]
   (let [r (vec rows)]
     (mapcat #(subvec r (first %) (second %)) ranges)))
-;; (select-ranges [0 1 2 3 4 5 6 7 8 9 10] [0 2] [4 5])
+(examples
+ (assert-=
+  (0 1 4)
+  (select-ranges [0 1 2 3 4 5 6 7 8 9 10] [0 2] [4 5])
+  ))
 
 (defn convert-row-num [row-num num-rows]
   (floored (* num-rows row-num (double 0.01))))
@@ -398,45 +396,13 @@
     @i))
 ;; (select-keyword [:a [:b 3 4] [:c]] :b)
 
+
+
 (defn zero-pad [width string]
   (if string
     (let [s (str (apply str (repeat width "0")) string)]
       (subs s (- (count s) width)))))
 
-(defn as-matnr [string]
-  (zero-pad 18 string))
-
-(defn as-document-num [string]
-  (zero-pad 10 string))
-;; (as-document-num "asdf")
-
-(defn as-short-document-num [string]
-  "remove leading zeros"
-  (if string (str/replace string #"^0*" "")))
-;; (as-short-document-num (as-document-num "00001"))
-
-(defn bh_login [email pw]
-  (let [cred
-        {"customer"
-         {"email" email, "password" pw}
-         "session"
-         {"customer"
-          {"email" email, "password" pw}
-          }}
-        params
-        {:body         (ches/generate-string cred)
-         :content-type :json
-         :accept       :json}
-        result (client/post
-                "https://www.summit.com/store/customers/sign_in.json"
-                params)
-        ;; (clojurize-map-keywords
-        result (assoc result :body (ches/parse-string (:body result)))
-        m (clojurize-map (clojure.walk/keywordize-keys result))]
-    (assoc m
-           :auth-token (:X-CSRF-Token (:headers m))
-           :customer (-> m :body :customers first)
-           )))
 
 
 (def ^:dynamic level-function-names (list))
@@ -483,34 +449,6 @@
        (cons '~m args#))))
 
 
-(defn col-names [definition-vector]
-  (->> definition-vector (partition 4) (map first)))
-
-(defmacro make-record [name cols-names]
-  `(apply (macro->fn defrecord) ['~name (->> ~cols-names (map name) (map symbol) vec)]))
-;; (defmacro make-record [name definition-vector]
-;;   `(apply (macro->fn defrecord) ['~name (->> ~(col-names definition-vector) (map name) (map symbol) vec)]))
-
-(defprotocol Validator
-  "validate "
-  (field-validations [rec] "returns map: {field-name [predicate (fn [name val rec] msg) ...] ...}")
-  (errors [rec] "returns map: {field-name [msg ...] ...")
-  (valid? [rec] "returns true if errors is empty map"))
-
-(defn not-re-matches [regex string]
-  (not (re-matches regex string)))
-(def test-failure #(re-matches #"au9234721324189712345qiouqwre" %))
-(def required #(and (not (nil? %)) (not= "" %)))
-(def digits #(re-matches #"\d*" %))
-(def string-float #(re-matches #"[\d.]*" %))
-(def alphanumeric? #(re-matches #"[a-zA-Z0-9]*" %))
-
-(def validators
-  {:test-failure [test-failure #(str "The deck was stacked against bro: " %)]
-   :digits       [digits #(str "Must be digits only: " %)]
-   :required     [required (fn [_] "This field is required.")]
-   })
-
 (defn now [] (java.util.Date.))
 
 (defn short-timenow []
@@ -541,16 +479,6 @@
   (clean-all (now))
   )
 
-(defn stepxml-top-tag []
-  [:STEP-ProductInformation
-   {:ExportTime (timenow)
-    ;:ExportContext "Context1"
-    :ContextID "Context1"
-    :WorkspaceID "Main"
-    :UseContextLocale "false"
-    }
-   [:Products]])
-
 
 ;(map * [1 2 3] [4 5 6])
 ;(for [i [1 2 3] j [4 5 5]] (* i j))
@@ -570,54 +498,6 @@
 ;(time (doall (for [x (range 10) y (range 10) :when (> x y)] [x y])))
 ;(time (dorun (for [x (range 1000) y (range 10000) :when (> x y)] [x y])))
 ;(for [[x y] '([:a 0] [:b 2] [:c 0]) :when (= y 0)] x)
-
-(defn is-search-page? [txt]
-  (re-find #"Refine By" txt))
-
-(defn content-for-name [coll name]
-  (let [section (first (filter #(= name (% "name")) coll))
-        ]
-    (case (section "type")
-      "TABLE" (->> (section "table") second)
-      section)
-    )
-  )
-(examples
- (content-for-name saporder "ET_ORDERS_SUMMARY")
- (content-for-name saporder "ET_ORDERS_DETAIL"))
-
-(defn hselect [parsed v]
-  (html/select parsed v))
-
-(defn hdetect [parsed v]
-  (first (hselect parsed v)))
-
-(defn platt-page-category [page]
-  (cond
-    (not-empty (hselect page [:span.ProductPriceOrderBox])) :product
-    (not-empty (hselect page [:div.no-products-section])) :not-found
-    (not-empty (hselect page [:div.refineByHeader])) :search
-    :else :unknown
-    ))
-;(platt-page-category q)
-
-(defn has-platt-download? [search-str]
-  (or
-    (.exists (io/as-file (str "/Users/bmd/data/crawler/platt/product/" search-str ".html")))
-    (.exists (io/as-file (str "/Users/bmd/data/crawler/platt/search/" search-str ".html")))
-    (.exists (io/as-file (str "/Users/bmd/data/crawler/platt/not-found/" search-str ".html")))
-    (.exists (io/as-file (str "/Users/bmd/data/crawler/platt/unknown/" search-str ".html")))
-    ))
-
-(defn platt-url [search-str]
-  (str "https://www.platt.com/search.aspx?q=" search-str "&catNavPage=1&navPage=1_16_0")
-  )
-
-(defn html->enlive [html]
-  (html/html-resource (java.io.StringReader. html)))
-
-(defn htmlfile->enlive [html]
-  (html/html-resource (java.io.FileReader. html)))
 
 
 
@@ -651,66 +531,6 @@
       (replace "=>" ":")
       ))
 
-
-(defn save-platt-file [search-str html]
-  (let [dir "/Users/bmd/data/crawler/platt/"
-        content (html->enlive html)
-        category (platt-page-category content)
-        filename (str search-str ".html")
-        full-filename (str dir (name category) "/" filename)
-        ]
-    (println full-filename)
-    (spit full-filename html)
-    ))
-
-(defn force-download-platt [search-str]
-  ;(let [url (str "https://www.platt.com/search.aspx?q=" search-str "&catNavPage=1&navPage=1_16_0")
-  (let [url (platt-url search-str)
-        html (slurp (java.net.URL. url))]
-    ;(println url)
-    (save-platt-file search-str html)
-    html))
-
-(defn download-platt [search-str]
-  (if (not (has-platt-download? search-str))
-    (force-download-platt search-str)))
-
-(defn slow-download-platt [search-str]
-  (if (not (has-platt-download? search-str))
-    (do
-      (force-download-platt search-str)
-      (Thread/sleep 3000))))
-
-;(has-platt-download? "045242309825")
-;(.exists (io/as-file "/Users/bmd"))
-;(spit "/Users/bmd/data/crawler/platt/045242309825" m)
-
-;(def matnr045242309825 (download-platt "45242309825"))
-
-;matnr045242309825
-;(def m matnr045242309825)
-
-;(def m (force-download-platt "781810464731"))
-;(def l (force-download-platt "045242309719"))
-;(platt-page-category l)
-;l
-;(def n (html/html-resource (java.net.URL. (platt-url "781810464731"))))
-;(def l (html/html-resource (java.net.URL. (platt-url "045242309719"))))
-;(def q (html/html-resource (java.net.URL. (platt-url "cutter"))))
-;(save-platt-file "045242309719" (doseq l))
-;(type l)
-;045242309719
-;(spit "/Users/bmd/data/crawler/platt/78181046473" n)
-;n
-;m
-;(html/select (html/html-resource m) [:script])
-;(html/select l [:span.ProductPriceOrderBox])
-;(html/select n [:span])
-;
-;(-> (html/select l [:span.ProductPriceOrderBox]) first :content first)
-;span.ProductPrice
-; span.ProductPriceOrderBox
-; span.ProductPricePerType
 
 (defn req-sans-unprintable [req]
   #_["compojure.api.middleware/options",
@@ -754,26 +574,6 @@
   ;; (clean-all (req-sans-unprintable req)))
   (req-sans-unprintable req))
 
-(defn log-now [obj]
-  "stores request in its own file as edn"
-  (let [filename (uuid)]
-    (spit (str "log/separate/" filename)
-          (pr-str obj)))
-  obj)
-
-(defn do-log-request
-  ([req] (do-log-request req "requests"))
-  ([req filename]
-   (log-now req)   ;; always save separately
-   (spit (str "log/" filename ".log")
-         (with-out-str
-           (ppa
-            [(localtime)
-             (if (map? req) (req->printable req) req)
-             ]))
-         :append true)
-   req))
-;; (do-log-request 3 "requests")
 (defn fempty
   "returns function that replaces nil or empty strings with new values"
   [func & defaults]
@@ -784,24 +584,6 @@
       (apply func args))))
 ;; ((fempty (fn [& args] (println args)) 3 4 6) nil 5 nil)
 ;; ((fempty (fn [& args] (println args)) 3 4 nil 'abc) nil 5 nil nil)
-
-(defn upc-check-digit [string]
-  (let [zero (int \0)]
-    (loop [accum 0
-           s (seq string)
-           even-digit? false]
-      (if (empty? s)
-        (mod (- 10 (mod accum 10)) 10)
-        (let [x (- (int (first s)) zero)]
-          (println even-digit? x)
-          (recur (+ accum (if even-digit? x (* 3 x))) (rest s) (not even-digit?)))))))
-
-(defn add-checksum [string]
-  (let [s (zero-pad 11 string)]
-    (str s (upc-check-digit s))))
-;; (upc-check-digit "87663000027")
-;; (upc-check-digit "80432546052")
-;; (assert (= "804325460521" (add-checksum "80432546052")))
 
 (defn base64-encode [s]
   (String. (b64/encode (.getBytes s)) "UTF-8"))
