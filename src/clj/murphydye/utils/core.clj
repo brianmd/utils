@@ -340,22 +340,24 @@
   (last args))
 (defn log-now [obj]
   "stores request in its own file as edn"
-  (let [filename (uuid)]
-    (spit (str "log/separate/" filename)
-          (pr-str obj)))
+  (let [filename      (uuid)
+        full-filename (str "log/separate/" filename)]
+    (io/make-parents full-filename)
+    (spit full-filename (pr-str obj)))
   obj)
 
 (defn do-log-request
   ([req] (do-log-request req "requests"))
   ([req filename]
    (log-now req)   ;; always save separately
-   (spit (str "log/" filename ".log")
-         (with-out-str
-           (ppa
-            [(localtime)
-             (if (map? req) (req->printable req) req)
-             ]))
-         :append true)
+   (let [full-filename (str "log/" filename ".log")]
+     (spit full-filename
+           (with-out-str
+             (ppa
+              [(localtime)
+               (if (map? req) (req->printable req) req)
+               ]))
+           :append true))
    req))
 ;; (do-log-request 3 "requests")
 
