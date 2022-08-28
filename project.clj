@@ -3,7 +3,7 @@
   :url "https://github.com/brianmd/utils"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.8.0"]
+  :dependencies [[org.clojure/clojure "1.11.1"]
                  [com.taoensso/carmine "2.12.2"]
                  [clj-http "2.1.0"]
                  [org.clojure/data.csv "0.1.3"]
